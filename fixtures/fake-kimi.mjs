@@ -5,9 +5,35 @@
 // -p "<prompt>".
 //
 // The prompt text selects the behaviour, so one fixture covers every case.
+//
+// It is deliberately strict about the arguments it receives. A lenient stand-in answers "ok" no
+// matter how it was invoked — with a missing -p it would even read the flag itself as the prompt —
+// which would keep every test green after the bridge stopped passing the prompt at all.
 
 const argv = process.argv.slice(2);
-const prompt = argv[argv.indexOf("-p") + 1] ?? "";
+const fail = (reason) => {
+  process.stderr.write(`fake-kimi: ${reason}\ngot: ${JSON.stringify(argv)}\n`);
+  process.exit(64);
+};
+
+const formatAt = argv.indexOf("--output-format");
+
+if (formatAt === -1 || argv[formatAt + 1] !== "stream-json") {
+  fail("expected `--output-format stream-json`");
+}
+
+const promptAt = argv.indexOf("-p");
+
+if (promptAt === -1) {
+  fail("expected the prompt to be passed with -p");
+}
+
+const prompt = argv[promptAt + 1];
+
+if (prompt === undefined || prompt.startsWith("--")) {
+  fail("-p was given without a prompt after it");
+}
+
 const emit = (record) => process.stdout.write(`${JSON.stringify(record)}\n`);
 
 if (prompt.includes("HANG")) {
@@ -22,6 +48,10 @@ if (prompt.includes("HANG")) {
   emit({ role: "assistant", content: "Реквизит существует." });
   emit({ role: "meta", type: "session.resume_hint", session_id: "session_fixture" });
   process.exit(0);
+} else if (prompt.includes("SLOWANSWER")) {
+  // Produce an answer, then hang: a timeout must not report this partial text as a clean result.
+  emit({ role: "assistant", content: "partial answer" });
+  setTimeout(() => {}, 60_000);
 } else if (prompt.includes("LIBUV")) {
   // A complete answer followed by a non-zero exit, which is what kimi-code does on Windows while
   // tearing down handles. The parsed answer must win over the exit status.

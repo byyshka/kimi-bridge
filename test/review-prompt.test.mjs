@@ -16,11 +16,13 @@ const base = {
   budgetToolCalls: 7,
 };
 
-test("the brief carries all four contract sections", () => {
+test("the brief carries all four contract sections as headings", () => {
   const prompt = buildReviewPrompt(base);
 
+  // Match the heading, not the bare phrase: "Не смог проверить" also appears in the sentence about
+  // the tool budget, so a substring check would stay green after the section itself was dropped.
   for (const section of ["Вердикт", "Находки", "Подтверждено инструментами", "Не смог проверить"]) {
-    assert.ok(prompt.includes(section), `missing section: ${section}`);
+    assert.ok(prompt.includes(`### ${section}`), `missing section heading: ### ${section}`);
   }
 });
 
@@ -38,10 +40,12 @@ test("without a focus the brief still states what to look at", () => {
   assert.match(prompt, /корректность|производительность|транзакции/i);
 });
 
-test("a supplied focus replaces the default priorities", () => {
+test("a supplied focus replaces the default priorities rather than joining them", () => {
   const prompt = buildReviewPrompt({ ...base, focus: "только блокировки" });
 
   assert.ok(prompt.includes("только блокировки"));
+  // The default list must be gone, otherwise the focus is diluted by everything else.
+  assert.ok(!prompt.includes("Без заданного приоритета"));
 });
 
 test("listed files are named in the brief", () => {

@@ -43,8 +43,22 @@ test("narration is not mistaken for the answer, and tool calls are reported", as
   assert.equal(result.toolCalls[0].name, "Read");
 });
 
-test("a timeout rejects instead of returning a truncated answer", async () => {
-  await assert.rejects(() => call("HANG", 1), /killed by the 1s timeout/);
+test("a timeout with no output says so plainly", async () => {
+  await assert.rejects(() => call("HANG", 1), /No answer had been produced/);
+});
+
+test("a timeout discards text already produced instead of passing it off as the answer", async () => {
+  await assert.rejects(
+    () => call("SLOWANSWER", 1),
+    (error) => {
+      assert.match(error.message, /killed by the 1s timeout/);
+      assert.match(error.message, /Partial output \(\d+ chars\)/);
+      // The partial text itself must never be handed back as if it were a finished answer.
+      assert.ok(!error.message.includes("partial answer"));
+
+      return true;
+    },
+  );
 });
 
 test("an empty answer rejects rather than passing an empty string on", async () => {
