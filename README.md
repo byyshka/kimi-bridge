@@ -19,18 +19,21 @@ This bridge is a thin adapter: it spawns the Kimi CLI and parses its output. It 
 authenticates nothing.
 
 1. **Install and log in** — `npm i -g @moonshot-ai/kimi-code`, then `kimi login`. That is a
-   device-code OAuth flow against a Kimi subscription; no Moonshot API key is involved. Confirm it
+   device-code OAuth flow against a Kimi subscription; an API key works too, if you prefer. Confirm it
    works on its own before wiring up the bridge:
 
    ```bash
    kimi -p "reply with one word: ok" --output-format stream-json
    ```
 
-2. **Give Kimi its own MCP servers — this is the part that takes real time.** Kimi reads its own
-   `mcp.json` under its home directory, entirely separate from your Claude configuration. Without
-   it you get a second opinion from memory; with it you get an agent that can check a claim before
-   answering. Nothing in this bridge configures those servers, and nothing is inherited from
-   Claude's set.
+2. **Give Kimi its own MCP servers — this is the part that takes real time, and the part that
+   makes the bridge worth having.** Kimi reads its own `mcp.json` (on Windows,
+   `%USERPROFILE%\.kimi-code\mcp.json`; `$KIMI_CODE_HOME` moves it), entirely separate from your
+   Claude configuration. Nothing here configures those servers and nothing is inherited from
+   Claude's set — consult Kimi's own documentation for the file's schema.
+
+   Without them you get a second opinion from memory. With them you get an agent that checks a
+   claim before answering — and the footer on every reply tells you which of the two you got.
 
 3. **Know which instruction files Kimi actually reads.** Measured, not assumed: Kimi picks up
    **`AGENTS.md`** and the skill list under `.agents/skills/`. It does **not** read `CLAUDE.md`,
@@ -49,13 +52,31 @@ caller nothing.
 
 ## Requirements
 
-- **Node.js ≥ 20.11**
-- **Kimi Code CLI**: `npm i -g @moonshot-ai/kimi-code`, then `kimi login` (device-code OAuth against
-  a Kimi subscription — no Moonshot API key needed)
+- **Node.js ≥ 20.11** for this bridge — but see the version note below, the CLI wants more
+- **Kimi Code CLI**, installed so that its `dist/main.mjs` exists on disk:
+  `npm i -g @moonshot-ai/kimi-code`, then `kimi login`
 - Optionally, MCP servers configured in Kimi's own `mcp.json` — that is where the value comes from
 
 **Windows only.** Built and tested on Windows 11. There are POSIX branches in the code, but they are
 neither tested nor supported.
+
+### Version note — read this before installing
+
+**Verified against kimi-code `0.31.1`.** The stream parsing here is written to that version's
+NDJSON records. The published CLI has since moved to the `2.x` line, and this bridge has **not**
+been tested against it; if the record shapes changed, the bridge will return "no answer" while the
+CLI itself works fine. Pin the CLI or expect to adjust `parseStreamJson`.
+
+**The CLI needs Node ≥ 22.19**, even though the bridge itself runs on 20.11. Installing it under
+Node 20 fails on the `engines` check. If you are on 20.x, the bridge will run but you will have no
+CLI to drive.
+
+**Install it the way that yields `dist/main.mjs`.** This bridge spawns that file through `node`
+rather than going through the `kimi` shim, deliberately — the shim is a `.cmd` wrapper and would
+force `shell: true`, breaking argv escaping for prompts with quotes or non-ASCII text. Moonshot also
+publishes a one-line Windows installer that drops a `kimi` binary on `PATH`; if you install that
+way, there may be no `dist/main.mjs` to find, and the bridge will report the paths it tried. Point
+`KIMI_BRIDGE_ENTRY` at the right file, or install through npm.
 
 ## Install
 
