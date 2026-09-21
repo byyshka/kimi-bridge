@@ -9,9 +9,10 @@
 //     while tearing down handles ("UV_HANDLE_CLOSING", src\win\async.c). That fires
 //     after the answer is already on stdout, so a parsed answer wins over exit status.
 //
-// Observability: every call is appended to logs/YYYY-MM-DD.jsonl, and the tool calls
-// Kimi made are summarized back into the answer. Without that summary a claim like
-// "the attribute exists" is indistinguishable from a guess.
+// Observability: the tool calls Kimi made are summarized back into every answer — without that
+// summary a claim like "the attribute exists" is indistinguishable from a guess. A fuller record
+// (prompt, answer, timings) goes to logs/YYYY-MM-DD.jsonl only when KIMI_BRIDGE_LOG=1, since those
+// fields hold whatever the caller was working on.
 //
 // No background-job layer here, on purpose. v0.4.0 grew kimi_start/kimi_result/kimi_jobs
 // on a file-backed registry; an audit found three blockers in it and, worse, that its
@@ -26,7 +27,7 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,19 +37,25 @@ const { version: VERSION } = JSON.parse(readFileSync(new URL("./package.json", i
 
 const DEFAULT_TIMEOUT_SEC = 600;
 const DEFAULT_REVIEW_TIMEOUT_SEC = 1500;
+const MAX_PROMPT_CHARS = 28000; // argv ceiling on Windows is 32767 for the whole command line
 const LOG_DIR = process.env.KIMI_BRIDGE_LOG_DIR || path.join(import.meta.dirname, "logs");
 
 // Off by default: the log records prompts and answers verbatim, which on someone else's machine
 // means their data on disk without them ever asking for it. Opt in with KIMI_BRIDGE_LOG=1.
 const LOGGING_ENABLED = process.env.KIMI_BRIDGE_LOG === "1";
 
-// One binary serves two Kimi profiles, told apart by KIMI_BRIDGE_PROFILE. The default one
-// runs against a KIMI_CODE_HOME carrying ~20 MCP servers (1C metadata graphs, embeddings,
-// syntax checker, SSL, ITS); "neutral" points at a home whose mcp.json is empty.
+// One binary serves two roles, told apart by KIMI_BRIDGE_PROFILE: the default one assumes Kimi has
+// MCP servers of its own, "neutral" assumes it has none.
 //
-// The descriptions below are what a calling agent picks by, so they must NOT be identical
-// across the two. A description promising metadata verification, sitting in front of a profile
-// that has no tools at all, is exactly how an answer from memory gets read as a checked one.
+// This flag changes only what this server advertises — its name, its descriptions, and whether
+// kimi_review is registered. Which MCP servers Kimi actually has is decided by KIMI_CODE_HOME,
+// inherited by the child process, so a neutral profile must be registered with its own
+// KIMI_CODE_HOME pointing at a home whose mcp.json is empty. Setting the profile alone changes the
+// advertising, not the tools.
+//
+// The descriptions are what a calling agent picks by, so they must NOT be identical across the
+// two. A description promising metadata verification, sitting in front of a Kimi that has no tools
+// at all, is exactly how an answer from memory gets read as a checked one.
 const IS_NEUTRAL_PROFILE = process.env.KIMI_BRIDGE_PROFILE === "neutral";
 
 function resolveKimiEntry() {
@@ -327,7 +334,68 @@ function buildAskPrompt({ prompt, files }) {
   return filesBlock ? `${filesBlock}\n${prompt}` : prompt;
 }
 
+// Children still running, so they can be cleaned up if this server goes down mid-call.
+const liveChildren = new Set();
+
+// child.kill() signals only the node wrapper we spawned; Kimi starts its own children, and those
+// survive as orphans. Windows has no process group to signal, so the tree goes through taskkill /T.
+function killTree(child) {
+  if (!child.pid) {
+    return;
+  }
+
+  if (process.platform === "win32") {
+    try {
+      execFileSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
+
+      return;
+    } catch {
+      // taskkill can fail if the process already exited — fall through to the direct kill.
+    }
+  }
+
+  try {
+    child.kill("SIGKILL");
+  } catch {
+    // Already gone.
+  }
+}
+
+function killAllChildren() {
+  for (const child of liveChildren) {
+    killTree(child);
+  }
+}
+
+// On "exit" only synchronous cleanup is possible, and calling process.exit there would recurse.
+process.on("exit", killAllChildren);
+
+// A signal handler replaces the default action, so the process would otherwise keep running and
+// ignore Ctrl+C. Clean up, then exit with the conventional 128 + signal number.
+process.on("SIGINT", () => {
+  killAllChildren();
+  process.exit(130);
+});
+
+process.on("SIGTERM", () => {
+  killAllChildren();
+  process.exit(143);
+});
+
 function runKimi({ prompt, cwd, sessionId, timeoutSec, model }) {
+  if (prompt.length > MAX_PROMPT_CHARS) {
+    return Promise.reject(
+      new Error(
+        `Prompt is ${prompt.length} chars, over the ${MAX_PROMPT_CHARS} limit. The CLI takes it ` +
+          "through argv, and Windows caps a command line at 32767. Pass files by path in `files` " +
+          "instead of pasting their contents — Kimi opens them itself.",
+      ),
+    );
+  }
+
   const entry = resolveKimiEntry();
   const args = [entry, "--output-format", "stream-json"];
 
@@ -351,13 +419,15 @@ function runKimi({ prompt, cwd, sessionId, timeoutSec, model }) {
       stdio: ["ignore", "pipe", "pipe"],
     });
 
+    liveChildren.add(child);
+
     let stdout = "";
     let stderr = "";
     let timedOut = false;
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill();
+      killTree(child);
     }, timeoutSec * 1000);
 
     child.stdout.setEncoding("utf8");
@@ -380,12 +450,14 @@ function runKimi({ prompt, cwd, sessionId, timeoutSec, model }) {
 
     child.on("error", (error) => {
       clearTimeout(timer);
+      liveChildren.delete(child);
       writeLog({ ...baseLog(), status: "spawn_error", error: error.message });
       reject(error);
     });
 
     child.on("close", (code) => {
       clearTimeout(timer);
+      liveChildren.delete(child);
 
       const parsed = parseStreamJson(stdout);
       const log = {
@@ -410,7 +482,10 @@ function runKimi({ prompt, cwd, sessionId, timeoutSec, model }) {
           new Error(
             `Kimi was killed by the ${timeoutSec}s timeout. ` +
               (parsed.answer
-                ? `Partial output (${parsed.answer.length} chars) is in the log — treat it as incomplete.`
+                ? `Partial output (${parsed.answer.length} chars) was produced` +
+                  (LOGGING_ENABLED
+                    ? " and kept in the log — treat it as incomplete."
+                    : " and discarded; set KIMI_BRIDGE_LOG=1 to keep partial output.")
                 : "No answer had been produced.") +
               ` Tool calls made: ${parsed.toolCalls.length}.`,
           ),

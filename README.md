@@ -59,15 +59,16 @@ neither tested nor supported.
 
 ## Install
 
-```bash
-git clone <this repo> kimi-bridge
+```powershell
+git clone https://github.com/byyshka/kimi-bridge.git
 cd kimi-bridge
 npm install
+npm test          # optional, 6 tests, no network and no Kimi CLI needed
 
-claude mcp add kimi-bridge --scope user -- node /absolute/path/to/kimi-bridge/index.mjs
+claude mcp add kimi-bridge --scope user -- node C:\path\to\kimi-bridge\index.mjs
 ```
 
-Restart the client afterwards.
+Restart the client afterwards. The `claude` CLI has to be installed already.
 
 ## Tools
 
@@ -79,7 +80,7 @@ than pasting their contents.
 `session_id` continues a previous thread — right for iterating on one artifact, wrong for a second
 opinion, where carrying context over means inheriting the first answer's assumptions.
 
-### `kimi_review(subject, target, focus?, files?, known?, budget_tool_calls?)`
+### `kimi_review(subject, target, focus?, files?, known_good?, budget_tool_calls?, cwd?, model?, timeout_sec?)`
 
 A review with a fixed output contract: verdict, findings, *confirmed by tools*, *could not check*.
 The last section is mandatory — "nothing" is an answer, silence is not.
@@ -100,10 +101,37 @@ from one checked against your metadata.
 
 ## Two profiles from one binary
 
-`KIMI_BRIDGE_PROFILE=neutral` points the server at a different Kimi home — one whose `mcp.json` is
-empty. Register it as a second MCP server to have both: a tooled agent for questions about your
-codebase, and an isolated one for everything else, where an answer from the model's own knowledge is
-the honest form.
+Register the same file twice under different names to have both: a tooled agent for questions about
+your codebase, and an isolated one for everything else, where an answer from the model's own
+knowledge is the honest form.
+
+**Two variables, and both are needed.** `KIMI_BRIDGE_PROFILE=neutral` changes only what this server
+advertises — its name, its tool descriptions, and the fact that `kimi_review` is not registered.
+Which MCP servers Kimi actually has is decided by `KIMI_CODE_HOME`, which the child process
+inherits. Setting the profile alone gives you a tooled Kimi wearing a description that says it has
+no tools, which is worse than either honest state.
+
+```json
+{
+  "mcpServers": {
+    "kimi-bridge": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["C:\\path\\to\\kimi-bridge\\index.mjs"]
+    },
+    "kimi-clean": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["C:\\path\\to\\kimi-bridge\\index.mjs"],
+      "env": {
+        "KIMI_BRIDGE_PROFILE": "neutral",
+        "KIMI_CODE_HOME": "C:\\path\\to\\a\\kimi-home-with-empty-mcp-json",
+        "KIMI_BRIDGE_LOG_DIR": "C:\\path\\to\\kimi-bridge\\logs-clean"
+      }
+    }
+  }
+}
+```
 
 The two register **different tool descriptions on purpose**. A description promising metadata
 verification, sitting in front of a profile with no tools, is exactly how an unverified answer gets
@@ -166,7 +194,7 @@ stdout. The bridge trusts the parsed answer over the exit code.
 | `KIMI_BRIDGE_PROFILE` | `default` | `neutral` registers `kimi_ask` only. |
 | `KIMI_CODE_HOME` | Kimi's default | Which Kimi home (and thus which MCP set) to use. |
 | `KIMI_BRIDGE_LOG` | off | Set to `1` to enable the call log. |
-| `KIMI_BRIDGE_LOG_DIR` | `./logs` | Where the log is written. |
+| `KIMI_BRIDGE_LOG_DIR` | `logs/` next to `index.mjs` | Where the log is written. Not relative to the working directory. |
 
 If the CLI cannot be found, the error lists every path that was tried.
 
