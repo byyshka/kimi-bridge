@@ -18,11 +18,31 @@ attributes against real metadata instead of recalling them.
 This bridge is a thin adapter: it spawns the Kimi CLI and parses its output. It installs nothing and
 authenticates nothing.
 
-1. **Install and log in** — `npm i -g @moonshot-ai/kimi-code`, then `kimi login`. That is a
-   device-code OAuth flow against a Kimi subscription; an API key works too, if you prefer. Confirm it
-   works on its own before wiring up the bridge:
+1. **Install the CLI — through npm, and pinned.**
 
-   ```bash
+   ```powershell
+   npm i -g @moonshot-ai/kimi-code@0.31.1
+   kimi login
+   ```
+
+   Two things are deliberate here.
+
+   **The version is pinned** because that is the one this bridge's stream parsing was written
+   against and tested on. `@latest` currently resolves to the `2.x` line, which is untested here —
+   see the version note above before reaching for it.
+
+   **Install through npm, not the one-line installer.** Moonshot also publishes
+   `irm https://code.kimi.com/kimi-code/install.ps1 | iex`, which drops a `kimi` binary on `PATH`.
+   This bridge does not use that binary: it spawns `dist/main.mjs` through `node` directly, because
+   the `kimi` shim is a `.cmd` wrapper and would force `shell: true`, breaking argv escaping for
+   prompts with quotes or non-ASCII text. If you already installed that way, point
+   `KIMI_BRIDGE_ENTRY` at a `dist/main.mjs` you do have — otherwise the bridge will list the paths
+   it tried and stop.
+
+   Login is a device-code OAuth flow against a Kimi subscription; an API key works too. Confirm the
+   CLI works on its own before wiring up the bridge:
+
+   ```powershell
    kimi -p "reply with one word: ok" --output-format stream-json
    ```
 
@@ -31,6 +51,25 @@ authenticates nothing.
    `%USERPROFILE%\.kimi-code\mcp.json`; `$KIMI_CODE_HOME` moves it), entirely separate from your
    Claude configuration. Nothing here configures those servers and nothing is inherited from
    Claude's set — consult Kimi's own documentation for the file's schema.
+
+   The file is a map of server names to launch configs:
+
+   ```json
+   {
+     "mcpServers": {
+       "some-stdio-server": {
+         "type": "stdio",
+         "command": "npx",
+         "args": ["-y", "some-mcp-package"],
+         "env": { "SOME_TOKEN": "..." }
+       },
+       "some-http-server": {
+         "type": "http",
+         "url": "http://localhost:8080/mcp"
+       }
+     }
+   }
+   ```
 
    Without them you get a second opinion from memory. With them you get an agent that checks a
    claim before answering — and the footer on every reply tells you which of the two you got.
@@ -71,12 +110,8 @@ CLI itself works fine. Pin the CLI or expect to adjust `parseStreamJson`.
 Node 20 fails on the `engines` check. If you are on 20.x, the bridge will run but you will have no
 CLI to drive.
 
-**Install it the way that yields `dist/main.mjs`.** This bridge spawns that file through `node`
-rather than going through the `kimi` shim, deliberately — the shim is a `.cmd` wrapper and would
-force `shell: true`, breaking argv escaping for prompts with quotes or non-ASCII text. Moonshot also
-publishes a one-line Windows installer that drops a `kimi` binary on `PATH`; if you install that
-way, there may be no `dist/main.mjs` to find, and the bridge will report the paths it tried. Point
-`KIMI_BRIDGE_ENTRY` at the right file, or install through npm.
+**Install it through npm, pinned to that version** — the setup section below gives the command and
+explains why the one-line Windows installer is the wrong route here.
 
 ## Install
 
