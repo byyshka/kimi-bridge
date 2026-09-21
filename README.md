@@ -13,6 +13,30 @@ alone, so nothing 1C-flavoured reaches a general-purpose setup. If you do not wo
 solid second-agent bridge without a review tool; if you do, you get a reviewer that checks
 attributes against real metadata instead of recalling them.
 
+## Set up the Kimi CLI first
+
+This bridge is a thin adapter: it spawns the Kimi CLI and parses its output. It installs nothing and
+authenticates nothing.
+
+1. **Install and log in** — `npm i -g @moonshot-ai/kimi-code`, then `kimi login`. That is a
+   device-code OAuth flow against a Kimi subscription; no Moonshot API key is involved. Confirm it
+   works on its own before wiring up the bridge:
+
+   ```bash
+   kimi -p "reply with one word: ok" --output-format stream-json
+   ```
+
+2. **Give Kimi its own MCP servers — this is the part that takes real time.** Kimi reads its own
+   `mcp.json` under its home directory, entirely separate from your Claude configuration. Without
+   it you get a second opinion from memory; with it you get an agent that can check a claim before
+   answering. Nothing in this bridge configures those servers, and nothing is inherited from
+   Claude's set.
+
+3. **Know which instruction files Kimi actually reads.** Measured, not assumed: Kimi picks up
+   **`AGENTS.md`** and the skill list under `.agents/skills/`. It does **not** read `CLAUDE.md`,
+   `RULES.md` or anything in `.claude/rules/`. Any convention you expect the delegated agent to
+   honour has to live in `AGENTS.md` — a rule kept only in `CLAUDE.md` never reaches it, silently.
+
 ## Why a second agent at all
 
 Kimi runs with **its own MCP servers**, configured in its own home directory, independent of
@@ -30,7 +54,8 @@ caller nothing.
   a Kimi subscription — no Moonshot API key needed)
 - Optionally, MCP servers configured in Kimi's own `mcp.json` — that is where the value comes from
 
-Verified on Windows 11. Linux and macOS paths are handled but untested.
+**Windows only.** Built and tested on Windows 11. There are POSIX branches in the code, but they are
+neither tested nor supported.
 
 ## Install
 
