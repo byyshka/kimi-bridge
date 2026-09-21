@@ -63,7 +63,7 @@ neither tested nor supported.
 git clone https://github.com/byyshka/kimi-bridge.git
 cd kimi-bridge
 npm install
-npm test          # optional, 6 tests, no network and no Kimi CLI needed
+npm test          # optional, 13 tests, no network and no Kimi CLI needed
 
 claude mcp add kimi-bridge --scope user -- node C:\path\to\kimi-bridge\index.mjs
 ```

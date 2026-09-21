@@ -811,4 +811,4 @@ if (startedDirectly()) {
   });
 }
 
-export { resolveKimiEntry, formatResult };
+export { resolveKimiEntry, formatResult, runKimi };
