@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const server = path.join(here, "..", "index.mjs");
-const fixture = path.join(here, "fixtures", "fake-kimi.mjs");
+const fixture = path.join(here, "..", "fixtures", "fake-kimi.mjs");
 
 function talk(requests, extraEnv = {}) {
   return new Promise((resolve, reject) => {

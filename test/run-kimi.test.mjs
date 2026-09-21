@@ -8,7 +8,9 @@ import { fileURLToPath } from "node:url";
 
 import { runKimi } from "../index.mjs";
 
-const fixture = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "fake-kimi.mjs");
+// The fixture lives outside test/ on purpose: `node --test` treats every file under that directory
+// as a test file, and the stand-in would "pass" by merely running.
+const fixture = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "fixtures", "fake-kimi.mjs");
 let savedEntry;
 
 before(() => {
