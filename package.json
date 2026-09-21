@@ -4,6 +4,18 @@
   "type": "module",
   "description": "MCP server exposing a local Kimi Code CLI to Claude Code as a second agent, aimed at 1C:Enterprise work",
   "license": "MIT",
+  "author": "byyshka",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/byyshka/kimi-bridge.git"
+  },
+  "bugs": {
+    "url": "https://github.com/byyshka/kimi-bridge/issues"
+  },
+  "homepage": "https://github.com/byyshka/kimi-bridge#readme",
+  "os": [
+    "win32"
+  ],
   "main": "index.mjs",
   "bin": {
     "kimi-bridge": "index.mjs"
