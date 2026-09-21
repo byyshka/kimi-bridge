@@ -1,0 +1,5 @@
+node_modules/
+
+# Call log: holds prompts and answers verbatim when KIMI_BRIDGE_LOG=1.
+logs/
+logs-*/

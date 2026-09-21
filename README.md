@@ -1,0 +1,172 @@
+# kimi-bridge
+
+An MCP server that makes a locally installed **Kimi Code CLI** available inside Claude Code as a
+second agent.
+
+**This bridge is aimed at 1C:Enterprise development**, and it is worth being precise about where
+that shows. The machinery — spawning the CLI, parsing its stream, sessions, timeouts, the summary of
+tools actually called — is general. The 1C part is one tool: `kimi_review` casts Kimi as a BSL
+reviewer and tells it to verify metadata through its graph servers.
+
+That tool is registered **only in the default profile**. The `neutral` profile exposes `kimi_ask`
+alone, so nothing 1C-flavoured reaches a general-purpose setup. If you do not work with 1C you get a
+solid second-agent bridge without a review tool; if you do, you get a reviewer that checks
+attributes against real metadata instead of recalling them.
+
+## Why a second agent at all
+
+Kimi runs with **its own MCP servers**, configured in its own home directory, independent of
+Claude's. In the setup this was built for those are 1C metadata graphs, code embeddings, a syntax
+checker and standards lookups. That makes the difference between "a second model that agrees with
+you" and a reviewer that can check whether an attribute actually exists before answering.
+
+Kimi also has a 1M-token context and opens files itself, so a 70 KB module passed by path costs the
+caller nothing.
+
+## Requirements
+
+- **Node.js ≥ 20.11**
+- **Kimi Code CLI**: `npm i -g @moonshot-ai/kimi-code`, then `kimi login` (device-code OAuth against
+  a Kimi subscription — no Moonshot API key needed)
+- Optionally, MCP servers configured in Kimi's own `mcp.json` — that is where the value comes from
+
+Verified on Windows 11. Linux and macOS paths are handled but untested.
+
+## Install
+
+```bash
+git clone <this repo> kimi-bridge
+cd kimi-bridge
+npm install
+
+claude mcp add kimi-bridge --scope user -- node /absolute/path/to/kimi-bridge/index.mjs
+```
+
+Restart the client afterwards.
+
+## Tools
+
+### `kimi_ask(prompt, files?, cwd?, session_id?, model?, timeout_sec?)`
+
+An open question or a delegated analysis. Pass **files** as paths for Kimi to open itself rather
+than pasting their contents.
+
+`session_id` continues a previous thread — right for iterating on one artifact, wrong for a second
+opinion, where carrying context over means inheriting the first answer's assumptions.
+
+### `kimi_review(subject, target, focus?, files?, known?, budget_tool_calls?)`
+
+A review with a fixed output contract: verdict, findings, *confirmed by tools*, *could not check*.
+The last section is mandatory — "nothing" is an answer, silence is not.
+
+It takes **no `session_id` on purpose**: a review always starts a fresh session, because a reviewer
+holding the author's context inherits the author's blind spots.
+
+## Every answer says what it was based on
+
+Each reply ends with the tools Kimi actually called. When there were none, it says so outright:
+
+```text
+Kimi called NO tools — this answer is from the model's own knowledge, not verified against anything.
+```
+
+That line is the whole point. Without it, an answer recalled from training data is indistinguishable
+from one checked against your metadata.
+
+## Two profiles from one binary
+
+`KIMI_BRIDGE_PROFILE=neutral` points the server at a different Kimi home — one whose `mcp.json` is
+empty. Register it as a second MCP server to have both: a tooled agent for questions about your
+codebase, and an isolated one for everything else, where an answer from the model's own knowledge is
+the honest form.
+
+The two register **different tool descriptions on purpose**. A description promising metadata
+verification, sitting in front of a profile with no tools, is exactly how an unverified answer gets
+read as a checked one.
+
+## What it looks like in use
+
+Pass files by path — Kimi opens them itself, so their text never enters the calling agent's context:
+
+```js
+kimi_ask({
+  prompt: "Does the ЕГ_ПолучитьЦену procedure handle an empty price type? " +
+          "Answer yes or no with the line number, and say so plainly if you could not check.",
+  files: ["src/CommonModules/ЕГ_Ценообразование/Module.bsl"]
+})
+```
+
+```text
+Нет. Строка 47: при пустом виде цены запрос вернёт пустую выборку, и функция вернёт 0
+вместо ошибки — вызывающий код не отличит «цена нулевая» от «цена не найдена».
+
+---
+Kimi called 2 tool(s):
+  Read(path=src/CommonModules/ЕГ_Ценообразование/Module.bsl)
+  search_metadata(operation=list_attributes, object=Справочник.ВидыЦен)
+Took 24.1s.
+session_id: session_0bd086c7 (pass it back as session_id to continue this thread)
+```
+
+The footer is the part to read first. Two tool calls means the answer was checked against something;
+`Kimi called NO tools` means it was not.
+
+## When it does not work
+
+**`Kimi Code CLI entrypoint not found`**
+The error lists every path that was tried. Under nvm, fnm or volta the global root moves with the
+active Node version — if none of the listed paths is right, set `KIMI_BRIDGE_ENTRY` to your
+`dist/main.mjs` directly.
+
+**Kimi answers, but the reply ends with `Kimi called NO tools`**
+The answer came from the model's own knowledge. For a question of fact about your codebase that is
+not a verified answer — name the files in `files`, or check whether Kimi's own `mcp.json` actually
+has the servers you expect.
+
+**The server starts and nothing happens: exit 0, no output, no error**
+The entry-point check. Reached through a symlink or junction, Node resolves `import.meta.url` to the
+link target while `argv[1]` keeps the path as spawned, so a naive comparison concludes the file was
+imported rather than run and never calls `main()`. This bridge compares resolved real paths
+(case-insensitively on Windows) for exactly that reason.
+
+**A run ends with a libuv assertion on Windows**
+Expected, and handled: kimi-code trips it while tearing down handles, after the answer is already on
+stdout. The bridge trusts the parsed answer over the exit code.
+
+## Environment variables
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `KIMI_BRIDGE_ENTRY` | auto-detected | Absolute path to `dist/main.mjs`. Wins over detection. |
+| `KIMI_BRIDGE_PROFILE` | `default` | `neutral` registers `kimi_ask` only. |
+| `KIMI_CODE_HOME` | Kimi's default | Which Kimi home (and thus which MCP set) to use. |
+| `KIMI_BRIDGE_LOG` | off | Set to `1` to enable the call log. |
+| `KIMI_BRIDGE_LOG_DIR` | `./logs` | Where the log is written. |
+
+If the CLI cannot be found, the error lists every path that was tried.
+
+## Logging is off by default
+
+With `KIMI_BRIDGE_LOG=1` every call is appended to `logs/YYYY-MM-DD.jsonl` — prompt, answer, tools
+called, timings. Useful for working out why Kimi got something wrong, and nobody's business by
+default, so it stays off until you ask.
+
+## Behaviour worth knowing
+
+- **Exit codes are not trusted.** kimi-code trips a libuv assertion on Windows while tearing down
+  handles, *after* the answer is already on stdout. A parsed answer therefore wins over exit status.
+- **The CLI is spawned as `node dist/main.mjs`**, not through the `kimi` shim. The shim is a
+  `.cmd`/`.ps1` wrapper, which would force `shell: true` and break argv escaping for prompts holding
+  quotes, newlines or non-ASCII text.
+- **A timeout fails the call.** A truncated answer is never returned as though it were complete.
+- **Kimi narrates while it works**, and each narration line is an assistant record shaped exactly
+  like the real answer. The bridge takes the text after the last tool call as the answer.
+- **No background job layer**, deliberately. An earlier version grew one; the premise was false,
+  since killing the bridge kills the child anyway. Claude Code already backgrounds any call running
+  past two minutes.
+- **No sandbox.** Kimi runs with permission to write in its working directory. Pass `cwd`
+  deliberately.
+
+## License
+
+MIT

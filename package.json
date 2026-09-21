@@ -1,0 +1,36 @@
+{
+  "name": "kimi-bridge",
+  "version": "0.7.0",
+  "type": "module",
+  "description": "MCP server exposing a local Kimi Code CLI to Claude Code as a second agent, aimed at 1C:Enterprise work",
+  "license": "MIT",
+  "main": "index.mjs",
+  "bin": {
+    "kimi-bridge": "index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "mcp",
+    "claude-code",
+    "kimi",
+    "kimi-code",
+    "moonshot",
+    "subagent",
+    "1c",
+    "bsl"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.4.3"
+  }
+}
