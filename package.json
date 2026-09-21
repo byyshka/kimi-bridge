@@ -17,9 +17,6 @@
     "win32"
   ],
   "main": "index.mjs",
-  "bin": {
-    "kimi-bridge": "index.mjs"
-  },
   "files": [
     "index.mjs",
     "README.md",
