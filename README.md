@@ -93,7 +93,7 @@ caller nothing.
 
 - **Node.js ≥ 20.11** for this bridge — but see the version note below, the CLI wants more
 - **Kimi Code CLI**, installed so that its `dist/main.mjs` exists on disk:
-  `npm i -g @moonshot-ai/kimi-code`, then `kimi login`
+  `npm i -g @moonshot-ai/kimi-code@0.31.1`, then `kimi login` — pinned deliberately, see below
 - Optionally, MCP servers configured in Kimi's own `mcp.json` — that is where the value comes from
 
 **Windows only.** Built and tested on Windows 11. There are POSIX branches in the code, but they are
@@ -217,8 +217,10 @@ Took 24.1s.
 session_id: session_0bd086c7 (pass it back as session_id to continue this thread)
 ```
 
-The footer is the part to read first. Two tool calls means the answer was checked against something;
-`Kimi called NO tools` means it was not.
+The footer is the part to read first — but read *which* tools, not how many. The count includes
+plain file reads, so two calls can mean "it opened the module" rather than "it checked the
+metadata". `Kimi called NO tools` is the only unambiguous signal, and it means the answer came from
+the model's own knowledge.
 
 ## When it does not work
 

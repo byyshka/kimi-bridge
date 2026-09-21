@@ -103,7 +103,8 @@ function resolveKimiEntry() {
       "Kimi Code CLI entrypoint not found. Looked in:\n" +
         [...new Set(candidates)].map((candidate) => `  ${candidate}`).join("\n") +
         "\n" +
-        "Install it with `npm i -g @moonshot-ai/kimi-code`, or set KIMI_BRIDGE_ENTRY to dist/main.mjs.",
+        "Install it with `npm i -g @moonshot-ai/kimi-code@0.31.1` — the version this bridge's " +
+          "stream parsing was written against — or set KIMI_BRIDGE_ENTRY to a dist/main.mjs you have.",
     );
   }
 
@@ -554,8 +555,10 @@ function formatResult(result) {
 
 const ASK_DESCRIPTION_DEFAULT =
   "Ask Kimi (Moonshot K3) — an independent coding agent running locally — a question, or delegate analysis to it. " +
-  "Kimi reasons differently from Claude and has its own MCP toolset (1C metadata graphs for УТ/ERP, embeddings, " +
-  "syntax checker, SSL search, ITS, v8std), so it can verify claims about 1C metadata instead of guessing. " +
+  "Kimi reasons differently from Claude and runs with WHATEVER MCP servers are configured in its own mcp.json — " +
+  "typically metadata graphs, code search, a syntax checker and documentation lookups. When those are present it " +
+  "can verify a claim rather than recall it; when they are not, it answers from memory. The footer of every reply " +
+  "lists the tools it actually called, and that list — not this description — is what tells you which you got. " +
   "Use it for a second opinion, an open question, or to cross-check a conclusion. For code review or critique " +
   "use kimi_review instead — it enforces a brief and an output contract that this tool does not. " +
   "The reply reports which tools Kimi actually called — treat an answer with no tool calls as unverified. ";
