@@ -155,3 +155,94 @@ test("a call missing the required prompt is rejected by the schema", async () =>
   assert.ok(answer, "the server must answer a malformed call rather than stay silent");
   assert.match(JSON.stringify(answer).toLowerCase(), /prompt|required|invalid/);
 });
+
+// The fixture echoes its own argv back as the answer when asked, so these prove the options reach
+// the CLI rather than being accepted by the schema and quietly dropped.
+async function argvFor(args) {
+  const messages = await talk([
+    ...handshake,
+    {
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: { name: "kimi_ask", arguments: { prompt: "ECHOARGS", cwd: here, ...args } },
+    },
+  ]);
+
+  const text = answerTo(messages, 3).result.content[0].text;
+
+  return JSON.parse(text.split("\n---")[0]);
+}
+
+test("session_id reaches the CLI as --session", async () => {
+  const argv = await argvFor({ session_id: "session_previous" });
+  const at = argv.indexOf("--session");
+
+  assert.notEqual(at, -1, `--session missing from ${JSON.stringify(argv)}`);
+  assert.equal(argv[at + 1], "session_previous");
+});
+
+test("model reaches the CLI as --model", async () => {
+  const argv = await argvFor({ model: "kimi-code/k3-256k" });
+  const at = argv.indexOf("--model");
+
+  assert.notEqual(at, -1, `--model missing from ${JSON.stringify(argv)}`);
+  assert.equal(argv[at + 1], "kimi-code/k3-256k");
+});
+
+test("without them, neither flag is passed at all", async () => {
+  const argv = await argvFor({});
+
+  assert.equal(argv.indexOf("--session"), -1);
+  assert.equal(argv.indexOf("--model"), -1);
+});
+
+test("listed files are named in the prompt for Kimi to open itself", async () => {
+  // The point of `files` is that the caller never pastes their contents — the paths go in the
+  // prompt and Kimi reads them.
+  const argv = await argvFor({ files: ["src/CommonModules/Пример/Module.bsl"] });
+  const prompt = argv[argv.indexOf("-p") + 1];
+
+  assert.match(prompt, /src\/CommonModules\/Пример\/Module\.bsl/);
+});
+
+test("kimi_review runs through the protocol and returns the contract", async () => {
+  const messages = await talk([
+    ...handshake,
+    {
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: {
+        name: "kimi_review",
+        arguments: { subject: "ECHOARGS", target: "УТ 11.5, расширение", cwd: here },
+      },
+    },
+  ]);
+
+  const answer = answerTo(messages, 3);
+
+  assert.ok(answer.result, `kimi_review failed: ${JSON.stringify(answer)}`);
+
+  const argv = JSON.parse(answer.result.content[0].text.split("\n---")[0]);
+  const prompt = argv[argv.indexOf("-p") + 1];
+
+  // The handler must build the brief rather than forward the subject raw.
+  assert.match(prompt, /### Не смог проверить/);
+  assert.ok(prompt.includes("УТ 11.5, расширение"));
+});
+
+test("kimi_review refuses a call without a target environment", async () => {
+  // Answering about the wrong configuration is the failure this argument exists to prevent.
+  const messages = await talk([
+    ...handshake,
+    {
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: { name: "kimi_review", arguments: { subject: "что-нибудь" } },
+    },
+  ]);
+
+  assert.match(JSON.stringify(answerTo(messages, 3)).toLowerCase(), /target|required|invalid/);
+});

@@ -10,6 +10,9 @@
 // matter how it was invoked — with a missing -p it would even read the flag itself as the prompt —
 // which would keep every test green after the bridge stopped passing the prompt at all.
 
+import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
+
 const argv = process.argv.slice(2);
 const fail = (reason) => {
   process.stderr.write(`fake-kimi: ${reason}\ngot: ${JSON.stringify(argv)}\n`);
@@ -36,7 +39,29 @@ if (prompt === undefined || prompt.startsWith("--")) {
 
 const emit = (record) => process.stdout.write(`${JSON.stringify(record)}\n`);
 
-if (prompt.includes("HANG")) {
+if (prompt.includes("SPAWNCHILD")) {
+  // A detached grandchild that deliberately outlives this process, the way the real CLI's children
+  // do. Killing only the wrapper leaves it running; taskkill /T takes the whole tree. Its pid goes
+  // to a file, because a timed-out call returns no output to read it from.
+  const grandchild = spawn(process.execPath, ["-e", "setTimeout(() => {}, 120000)"], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+  });
+
+  grandchild.unref();
+
+  if (process.env.FIXTURE_PID_FILE) {
+    writeFileSync(process.env.FIXTURE_PID_FILE, String(grandchild.pid), "utf8");
+  }
+
+  setTimeout(() => {}, 60_000);
+} else if (prompt.includes("ECHOARGS")) {
+  // Report the arguments back as the answer, so a test can prove that session, model and the rest
+  // actually reach the CLI instead of being dropped on the way.
+  emit({ role: "assistant", content: JSON.stringify(argv) });
+  process.exit(0);
+} else if (prompt.includes("HANG")) {
   setTimeout(() => {}, 60_000);
 } else if (prompt.includes("EMPTY")) {
   process.exit(0);

@@ -143,9 +143,9 @@ Pass files by path — Kimi opens them itself, so their text never enters the ca
 
 ```js
 kimi_ask({
-  prompt: "Does the ЕГ_ПолучитьЦену procedure handle an empty price type? " +
-          "Answer yes or no with the line number, and say so plainly if you could not check.",
-  files: ["src/CommonModules/ЕГ_Ценообразование/Module.bsl"]
+  prompt: "Does ПолучитьЦенуНоменклатуры handle an empty price type? Answer yes or no with " +
+          "the line number, and say so plainly if you could not check.",
+  files: ["src/CommonModules/Ценообразование/Module.bsl"]
 })
 ```
 
@@ -155,7 +155,7 @@ kimi_ask({
 
 ---
 Kimi called 2 tool(s):
-  Read(path=src/CommonModules/ЕГ_Ценообразование/Module.bsl)
+  Read(path=src/CommonModules/Ценообразование/Module.bsl)
   search_metadata(operation=list_attributes, object=Справочник.ВидыЦен)
 Took 24.1s.
 session_id: session_0bd086c7 (pass it back as session_id to continue this thread)
